@@ -1,0 +1,1118 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Hash, Plus, Search, Moon, Sun, Smile, Paperclip, Send, 
+  Trash2, Reply, MessageSquare, User, Circle, CheckCheck, 
+  Settings, Image, Code, MoreVertical, X, Bell, Volume2, 
+  VolumeX, Sparkles, Bot, Shield, ChevronRight, LogOut, Download, Pin
+} from 'lucide-react';
+
+const KAMAR_DEFAULT = [
+  { id: 'umum', name: 'umum', description: 'Ruang obrolan santai untuk semua anggota', icon: '💬', unread: 0 },
+  { id: 'seputar-teknologi', name: 'seputar-teknologi', description: 'Diskusi seputar pemrograman, AI, dan gadget', icon: '💻', unread: 2 },
+  { id: 'diskusi-bebas', name: 'diskusi-bebas', description: 'Bahas topik bebas, humor, dan aktivitas harian', icon: '🎲', unread: 0 },
+  { id: 'berbagi-pengalaman', name: 'berbagi-pengalaman', description: 'Tempat berbagi ilmu, cerita, dan pengalaman', icon: '☕', unread: 0 },
+  { id: 'bantuan', name: 'bantuan-sistem', description: 'Pusat bantuan dan panduan penggunaan Coment', icon: '❓', unread: 0 }
+];
+
+const AVATAR_PRESET = [
+  '⚡', '🚀', '🎨', '🐱', '🦊', '🤖', '🎮', '🦄', '🍿', '🔥', '🔮', '🎧'
+];
+
+const BOT_USER = {
+  id: 'coment-bot',
+  name: 'Coment Bot 🤖',
+  avatar: '🤖',
+  status: 'online',
+  isBot: true
+};
+
+const PESAN_AWAL = {
+  'umum': [
+    {
+      id: 'm-1',
+      senderId: 'coment-bot',
+      senderName: 'Coment Bot 🤖',
+      senderAvatar: '🤖',
+      content: 'Selamat datang di **Coment**! 🎉 Aplikasi web obrolan modern berbasis Bahasa Indonesia. Jelajahi saluran obrolan, ubah profil kamu, berikan reaksi emoji, atau sapa saya dengan menyebut `@bot`!',
+      timestamp: new Date(Date.now() - 3600000 * 2).toISOString(),
+      reactions: { '❤️': 3, '🚀': 5 },
+      replyTo: null,
+      attachment: null,
+      isCode: false,
+      isPinned: true
+    },
+    {
+      id: 'm-2',
+      senderId: 'user-budi',
+      senderName: 'Budi Pratama',
+      senderAvatar: '🦊',
+      content: 'Halo semuanya! Tampilan web Coment ini rapi sekali dan responsif!',
+      timestamp: new Date(Date.now() - 3600000).toISOString(),
+      reactions: { '🔥': 2 },
+      replyTo: null,
+      attachment: null,
+      isCode: false,
+      isPinned: false
+    }
+  ],
+  'seputar-teknologi': [
+    {
+      id: 'm-3',
+      senderId: 'user-siti',
+      senderName: 'Siti Rahma',
+      senderAvatar: '🎨',
+      content: 'Ada yang sedang belajar React dan Tailwind CSS di sini?',
+      timestamp: new Date(Date.now() - 1800000).toISOString(),
+      reactions: { '👍': 4 },
+      replyTo: null,
+      attachment: null,
+      isCode: false,
+      isPinned: false
+    },
+    {
+      id: 'm-4',
+      senderId: 'coment-bot',
+      senderName: 'Coment Bot 🤖',
+      senderAvatar: '🤖',
+      content: '```js\n// Contoh kode React sederhana\nconst [pesan, setPesan] = useState("Halo Dunia!");\n```',
+      timestamp: new Date(Date.now() - 900000).toISOString(),
+      reactions: { '💡': 3 },
+      replyTo: null,
+      attachment: null,
+      isCode: true,
+      isPinned: false
+    }
+  ]
+};
+
+const DAFTAR_EMOJI = ['👍', '❤️', '🔥', '😂', '🎉', '💡', '🚀', '👀', '💯', '👏'];
+
+export default function App() {
+  const [tema, setTema] = useState(() => localStorage.getItem('coment_tema') || 'dark');
+  const [kamarList, setKamarList] = useState(() => {
+    const saved = localStorage.getItem('coment_kamar');
+    return saved ? JSON.parse(saved) : KAMAR_DEFAULT;
+  });
+  const [kamarAktif, setKamarAktif] = useState('umum');
+  const [daftarPesan, setDaftarPesan] = useState(() => {
+    const saved = localStorage.getItem('coment_pesan');
+    return saved ? JSON.parse(saved) : PESAN_AWAL;
+  });
+
+  // State profil pengguna
+  const [pengguna, setPengguna] = useState(() => {
+    const saved = localStorage.getItem('coment_pengguna');
+    return saved ? JSON.parse(saved) : {
+      id: 'usr_' + Math.random().toString(36).substr(2, 6),
+      name: 'Pengguna Baru',
+      avatar: '⚡',
+      status: 'online', // 'online' | 'away' | 'dnd'
+      statusMessage: 'Sedang menikmati obrolan di Coment'
+    };
+  });
+
+  // State UI & Kontrol
+  const [inputPesan, setInputPesan] = useState('');
+  const [balasPesan, setBalasPesan] = useState(null);
+  const [kataKunciCari, setKataKunciCari] = useState('');
+  const [tampilCari, setTampilCari] = useState(false);
+  const [tampilModalProfil, setTampilModalProfil] = useState(false);
+  const [tampilModalKamar, setTampilModalKamar] = useState(false);
+  const [namaKamarBaru, setNamaKamarBaru] = useState('');
+  const [deskripsiKamarBaru, setDeskripsiKamarBaru] = useState('');
+  const [ikonKamarBaru, setIkonKamarBaru] = useState('💬');
+  const [tampilPickerEmoji, setTampilPickerEmoji] = useState(false);
+  const [lampiranDipilih, setLampiranDipilih] = useState(null);
+  const [isKodeSnippet, setIsKodeSnippet] = useState(false);
+  const [sedangMengetik, setSedangMengetik] = useState(false);
+  const [suaraAktif, setSuaraAktif] = useState(true);
+  const [sidebarBukaMobile, setSidebarBukaMobile] = useState(false);
+
+  const refPesanAkhir = useRef(null);
+  const refInputFile = useRef(null);
+
+  useEffect(() => {
+    localStorage.setItem('coment_tema', tema);
+  }, [tema]);
+
+  useEffect(() => {
+    localStorage.setItem('coment_kamar', JSON.stringify(kamarList));
+  }, [kamarList]);
+
+  useEffect(() => {
+    localStorage.setItem('coment_pesan', JSON.stringify(daftarPesan));
+  }, [daftarPesan]);
+
+  useEffect(() => {
+    localStorage.setItem('coment_pengguna', JSON.stringify(pengguna));
+  }, [pengguna]);
+
+  useEffect(() => {
+    gulirKeBawah();
+  }, [daftarPesan, kamarAktif, sedangMengetik]);
+
+  const gulirKeBawah = () => {
+    refPesanAkhir.current?.scrollIntoView({ behavior: 'smooth' });
+  };
+
+  const pemutarSuaraKirim = () => {
+    if (!suaraAktif) return;
+    try {
+      const ctx = new (window.AudioContext || window.webkitAudioContext)();
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(587.33, ctx.currentTime); 
+      osc.frequency.exponentialRampToValueAtTime(880, ctx.currentTime + 0.1); 
+      gain.gain.setValueAtTime(0.1, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.1);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    } catch (e) {
+      console.log('Autoplay ditolak atau tidak didukung');
+    }
+  };
+
+  const tanganiKirimPesan = (e) => {
+    e?.preventDefault();
+    if (!inputPesan.trim() && !lampiranDipilih) return;
+
+    const pesanBaru = {
+      id: 'msg_' + Date.now(),
+      senderId: pengguna.id,
+      senderName: pengguna.name,
+      senderAvatar: pengguna.avatar,
+      content: inputPesan,
+      timestamp: new Date().toISOString(),
+      reactions: {},
+      replyTo: balasPesan ? {
+        id: balasPesan.id,
+        senderName: balasPesan.senderName,
+        content: balasPesan.content
+      } : null,
+      attachment: lampiranDipilih,
+      isCode: isKodeSnippet,
+      isPinned: false
+    };
+
+    setDaftarPesan(prev => ({
+      ...prev,
+      [kamarAktif]: [...(prev[kamarAktif] || []), pesanBaru]
+    }));
+
+    setInputPesan('');
+    setBalasPesan(null);
+    setLampiranDipilih(null);
+    setIsKodeSnippet(false);
+    setTampilPickerEmoji(false);
+    pemutarSuaraKirim();
+
+    // Cek pemicu balasan otomatis dari Coment Bot
+    const teksBawah = inputPesan.toLowerCase();
+    if (teksBawah.includes('@bot') || teksBawah.includes('halo bot') || teksBawah.includes('bantuan')) {
+      pemicuResponBot(inputPesan);
+    }
+  };
+
+  const pemicuResponBot = (teksPengguna) => {
+    setSedangMengetik(true);
+    setTimeout(() => {
+      let balasanBot = "Halo! Saya **Coment Bot** 🤖. Saya siap membantu kamu menjelajahi saluran, membagikan informasi, atau menjawab pertanyaan sederhana!";
+      const text = teksPengguna.toLowerCase();
+
+      if (text.includes('waktu') || text.includes('jam')) {
+        const opsiWaktu = { hour: '2-digit', minute: '2-digit', second: '2-digit' };
+        balasanBot = `Waktu sistem saat ini adalah **${new Date().toLocaleTimeString('id-ID', opsiWaktu)} WIB** 🕒`;
+      } else if (text.includes('lelucon') || text.includes('lucu') || text.includes('humor')) {
+        const leluconList = [
+          "Mengapa programmer suka mode gelap (dark mode)? Karena cahaya memancing munculnya bug! 🐛",
+          "Ada 10 jenis orang di dunia: mereka yang paham biner, dan mereka yang tidak! 🤓",
+          "Query SQL masuk ke sebuah kafe, mendekati dua meja dan bertanya... 'Boleh gabung (JOIN)?' ☕"
+        ];
+        balasanBot = leluconList[Math.floor(Math.random() * leluconList.length)];
+      } else if (text.includes('fitur') || text.includes('bantuan')) {
+        balasanBot = "Kamu bisa memanfaatkan fitur **Coment**: \n1. Buat kamar baru dengan tombol (+)\n2. Pin pesan penting\n3. Kirim gambar atau format kode\n4. Unduh riwayat obrolan melalui tombol Ekspor di kanan atas!";
+      }
+
+      const botMsg = {
+        id: 'msg_bot_' + Date.now(),
+        senderId: BOT_USER.id,
+        senderName: BOT_USER.name,
+        senderAvatar: BOT_USER.avatar,
+        content: balasanBot,
+        timestamp: new Date().toISOString(),
+        reactions: { '🤖': 1 },
+        replyTo: null,
+        attachment: null,
+        isCode: false,
+        isPinned: false
+      };
+
+      setDaftarPesan(prev => ({
+        ...prev,
+        [kamarAktif]: [...(prev[kamarAktif] || []), botMsg]
+      }));
+      setSedangMengetik(false);
+    }, 1200);
+  };
+
+  const tambahReaksi = (idPesan, emoji) => {
+    setDaftarPesan(prev => {
+      const pesanKamar = prev[kamarAktif] || [];
+      const diperbarui = pesanKamar.map(m => {
+        if (m.id === idPesan) {
+          const jumlahSekarang = m.reactions?.[emoji] || 0;
+          return {
+            ...m,
+            reactions: {
+              ...m.reactions,
+              [emoji]: jumlahSekarang + 1
+            }
+          };
+        }
+        return m;
+      });
+      return { ...prev, [kamarAktif]: diperbarui };
+    });
+  };
+
+  const sematkanPesan = (idPesan) => {
+    setDaftarPesan(prev => {
+      const pesanKamar = prev[kamarAktif] || [];
+      const diperbarui = pesanKamar.map(m => {
+        if (m.id === idPesan) {
+          return { ...m, isPinned: !m.isPinned };
+        }
+        return m;
+      });
+      return { ...prev, [kamarAktif]: diperbarui };
+    });
+  };
+
+  const hapusPesan = (idPesan) => {
+    setDaftarPesan(prev => ({
+      ...prev,
+      [kamarAktif]: (prev[kamarAktif] || []).filter(m => m.id !== idPesan)
+    }));
+  };
+
+  const unggahBerkas = (e) => {
+    const file = e.target.files[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setLampiranDipilih({
+          type: file.type.startsWith('image/') ? 'image' : 'file',
+          name: file.name,
+          url: reader.result
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const buatKamarBaru = (e) => {
+    e.preventDefault();
+    if (!namaKamarBaru.trim()) return;
+
+    const idFormat = namaKamarBaru.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
+    if (kamarList.some(r => r.id === idFormat)) {
+      alert('Kamar dengan nama ini sudah ada!');
+      return;
+    }
+
+    const objekKamarBaru = {
+      id: idFormat,
+      name: idFormat,
+      description: deskripsiKamarBaru || 'Kamar buatan pengguna',
+      icon: ikonKamarBaru || '💬',
+      unread: 0
+    };
+
+    setKamarList(prev => [...prev, objekKamarBaru]);
+    setDaftarPesan(prev => ({ ...prev, [idFormat]: [] }));
+    setKamarAktif(idFormat);
+    setTampilModalKamar(false);
+    setNamaKamarBaru('');
+    setDeskripsiKamarBaru('');
+  };
+
+  const eksporObrolan = () => {
+    const riwayat = daftarPesan[kamarAktif] || [];
+    if (riwayat.length === 0) {
+      alert('Tidak ada riwayat obrolan untuk diunduh di kamar ini.');
+      return;
+    }
+    const kontenData = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(riwayat, null, 2));
+    const tautanUnduh = document.createElement('a');
+    tautanUnduh.setAttribute("href", kontenData);
+    tautanUnduh.setAttribute("download", `riwayat-obrolan-${kamarAktif}.json`);
+    document.body.appendChild(tautanUnduh);
+    tautanUnduh.click();
+    tautanUnduh.remove();
+  };
+
+  // Kamar aktif & pencarian pesan
+  const kamarObjekAktif = kamarList.find(r => r.id === kamarAktif) || kamarList[0];
+  const pesanKamarAktif = daftarPesan[kamarAktif] || [];
+  const pesanPilihanCari = pesanKamarAktif.filter(m => 
+    m.content.toLowerCase().includes(kataKunciCari.toLowerCase()) ||
+    m.senderName.toLowerCase().includes(kataKunciCari.toLowerCase())
+  );
+  const pesanDisematkan = pesanKamarAktif.filter(m => m.isPinned);
+
+  const formatWaktuIndo = (isoString) => {
+    try {
+      const d = new Date(isoString);
+      return d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) + ' WIB';
+    } catch (e) {
+      return '';
+    }
+  };
+
+  return (
+    <div className={`h-screen w-screen flex flex-col font-sans transition-colors duration-200 overflow-hidden ${
+      tema === 'dark' ? 'bg-slate-950 text-slate-100' : 'bg-slate-100 text-slate-800'
+    }`}>
+      
+      {}
+      <header className={`h-16 border-b flex items-center justify-between px-4 z-20 backdrop-blur-md ${
+        tema === 'dark' ? 'bg-slate-900/80 border-slate-800' : 'bg-white/80 border-slate-200'
+      }`}>
+        <div className="flex items-center space-x-3">
+          <button 
+            onClick={() => setSidebarBukaMobile(!sidebarBukaMobile)} 
+            className="md:hidden p-2 rounded-lg hover:bg-slate-800/20 text-slate-400"
+          >
+            <Hash className="w-6 h-6" />
+          </button>
+          
+          <div className="flex items-center space-x-2.5">
+            <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 p-0.5 shadow-lg shadow-indigo-500/20">
+              <div className="w-full h-full bg-slate-900 rounded-[10px] flex items-center justify-center font-black text-xl text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-400">
+                C
+              </div>
+            </div>
+            <div>
+              <h1 className="font-extrabold text-lg tracking-wider bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+                Coment
+              </h1>
+              <div className="flex items-center space-x-1.5 text-xs text-emerald-400 font-medium">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span>Obrolan Langsung</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Tombol aksi header */}
+        <div className="flex items-center space-x-2">
+          {/* Pencarian */}
+          <button 
+            onClick={() => setTampilCari(!tampilCari)}
+            className={`p-2.5 rounded-xl transition-all ${
+              tampilCari 
+                ? 'bg-indigo-600 text-white shadow-md' 
+                : tema === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'
+            }`}
+            title="Cari Pesan"
+          >
+            <Search className="w-5 h-5" />
+          </button>
+
+          {/* Ekspor Chat */}
+          <button 
+            onClick={eksporObrolan}
+            className={`p-2.5 rounded-xl transition-all ${
+              tema === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'
+            }`}
+            title="Ekspor Riwayat Chat"
+          >
+            <Download className="w-5 h-5" />
+          </button>
+
+          {/* Sakelar Suara Notifikasi */}
+          <button 
+            onClick={() => setSuaraAktif(!suaraAktif)}
+            className={`p-2.5 rounded-xl transition-all ${
+              tema === 'dark' ? 'hover:bg-slate-800 text-slate-400' : 'hover:bg-slate-200 text-slate-600'
+            }`}
+            title={suaraAktif ? 'Matikan Suara Notifikasi' : 'Aktifkan Suara Notifikasi'}
+          >
+            {suaraAktif ? <Volume2 className="w-5 h-5 text-indigo-400" /> : <VolumeX className="w-5 h-5 text-slate-500" />}
+          </button>
+
+          {/* Sakelar Mode Gelap/Terang */}
+          <button 
+            onClick={() => setTema(tema === 'dark' ? 'light' : 'dark')}
+            className={`p-2.5 rounded-xl transition-all ${
+              tema === 'dark' ? 'hover:bg-slate-800 text-amber-400' : 'hover:bg-slate-200 text-indigo-600'
+            }`}
+            title="Ganti Tema"
+          >
+            {tema === 'dark' ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+          </button>
+
+          <div className="h-6 w-px bg-slate-700/50 mx-1" />
+
+          {/* Profil Pengguna */}
+          <button 
+            onClick={() => setTampilModalProfil(true)}
+            className={`flex items-center space-x-2 p-1.5 pr-3 rounded-xl transition-all border ${
+              tema === 'dark' ? 'bg-slate-800/60 border-slate-700/60 hover:border-slate-600' : 'bg-slate-100 border-slate-300 hover:border-slate-400'
+            }`}
+          >
+            <div className="relative">
+              <span className="text-xl flex items-center justify-center w-8 h-8 rounded-lg bg-slate-700/50">
+                {pengguna.avatar}
+              </span>
+              <span className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 ${
+                tema === 'dark' ? 'border-slate-900' : 'border-white'
+              } ${
+                pengguna.status === 'online' ? 'bg-emerald-500' : pengguna.status === 'away' ? 'bg-amber-500' : 'bg-rose-500'
+              }`} />
+            </div>
+            <span className="font-semibold text-sm max-w-[100px] truncate hidden sm:inline-block">
+              {pengguna.name}
+            </span>
+          </button>
+        </div>
+      </header>
+
+      {}
+      {tampilCari && (
+        <div className={`px-4 py-2.5 border-b flex items-center space-x-3 transition-all ${
+          tema === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-slate-50 border-slate-200'
+        }`}>
+          <Search className="w-4 h-4 text-slate-400" />
+          <input 
+            type="text"
+            placeholder={`Cari dalam #${kamarObjekAktif.name}...`}
+            value={kataKunciCari}
+            onChange={(e) => setKataKunciCari(e.target.value)}
+            className="bg-transparent border-none outline-none text-sm w-full"
+            autoFocus
+          />
+          {kataKunciCari && (
+            <button onClick={() => setKataKunciCari('')} className="text-xs text-slate-400 hover:text-slate-200">
+              Bersihkan
+            </button>
+          )}
+        </div>
+      )}
+
+      {}
+      <div className="flex-1 flex overflow-hidden relative">
+        
+        {/* SIDEBAR: KAMAR OBROLAN */}
+        <aside className={`w-72 flex-shrink-0 border-r flex flex-col justify-between transition-transform duration-300 z-10 ${
+          sidebarBukaMobile ? 'translate-x-0 absolute inset-y-0 left-0 bg-slate-900 w-80 shadow-2xl' : '-translate-x-full md:translate-x-0'
+        } ${tema === 'dark' ? 'bg-slate-900/50 border-slate-800/80' : 'bg-slate-50 border-slate-200'}`}>
+          
+          <div className="p-4 flex-1 overflow-y-auto">
+            {/* Header Saluran */}
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-2">
+                Kamar Obrolan
+              </span>
+              <button 
+                onClick={() => setTampilModalKamar(true)}
+                className="p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-md transition-all flex items-center space-x-1 text-xs font-medium"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                <span>Buat</span>
+              </button>
+            </div>
+
+            {/* Daftar Kamar */}
+            <div className="space-y-1">
+              {kamarList.map((kamar) => {
+                const isAktif = kamarAktif === kamar.id;
+                return (
+                  <button
+                    key={kamar.id}
+                    onClick={() => {
+                      setKamarAktif(kamar.id);
+                      setSidebarBukaMobile(false);
+                    }}
+                    className={`w-full flex items-center justify-between px-3 py-2.5 rounded-xl text-left transition-all group ${
+                      isAktif 
+                        ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white shadow-lg shadow-indigo-600/20 font-semibold' 
+                        : tema === 'dark' 
+                          ? 'hover:bg-slate-800/60 text-slate-400 hover:text-slate-200' 
+                          : 'hover:bg-slate-200/80 text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    <div className="flex items-center space-x-2.5 truncate">
+                      <span className="text-lg">{kamar.icon}</span>
+                      <span className="truncate"># {kamar.name}</span>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Asisten Bot Coment */}
+            <div className="mt-8">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-400 px-2 block mb-3">
+                Asisten Pintar
+              </span>
+              <div 
+                onClick={() => {
+                  setKamarAktif('umum');
+                  setInputPesan('@bot ');
+                }}
+                className={`flex items-center space-x-3 p-2.5 rounded-xl cursor-pointer border transition-all ${
+                  tema === 'dark' 
+                    ? 'bg-slate-800/40 border-slate-700/50 hover:bg-slate-800' 
+                    : 'bg-white border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <div className="w-9 h-9 rounded-lg bg-indigo-500/20 flex items-center justify-center text-xl">
+                  🤖
+                </div>
+                <div>
+                  <div className="text-sm font-semibold flex items-center space-x-1">
+                    <span>Coment Bot</span>
+                    <Sparkles className="w-3 h-3 text-amber-400" />
+                  </div>
+                  <div className="text-xs text-slate-400">Sebut @bot untuk bantuan</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Profil Pengguna Bawah Sidebar */}
+          <div className={`p-3 border-t flex items-center justify-between ${
+            tema === 'dark' ? 'border-slate-800/80 bg-slate-900/80' : 'border-slate-200 bg-slate-100'
+          }`}>
+            <div className="flex items-center space-x-2.5 min-w-0">
+              <div className="relative flex-shrink-0">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-xl shadow-md">
+                  {pengguna.avatar}
+                </div>
+                <div className={`absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full border-2 ${
+                  tema === 'dark' ? 'border-slate-900' : 'border-white'
+                } ${
+                  pengguna.status === 'online' ? 'bg-emerald-500' : pengguna.status === 'away' ? 'bg-amber-500' : 'bg-rose-500'
+                }`} />
+              </div>
+              <div className="min-w-0">
+                <div className="text-sm font-bold truncate">{pengguna.name}</div>
+                <div className="text-xs text-slate-400 capitalize">{pengguna.status}</div>
+              </div>
+            </div>
+            
+            <button 
+              onClick={() => setTampilModalProfil(true)}
+              className="p-2 rounded-lg hover:bg-slate-700/30 text-slate-400 hover:text-slate-200"
+              title="Pengaturan Profil"
+            >
+              <Settings className="w-4 h-4" />
+            </button>
+          </div>
+        </aside>
+
+        {}
+        <main className="flex-1 flex flex-col h-full overflow-hidden bg-transparent">
+          
+          {/* Header Kamar Aktif */}
+          <div className={`h-14 px-6 border-b flex items-center justify-between flex-shrink-0 ${
+            tema === 'dark' ? 'border-slate-800/60 bg-slate-900/30' : 'border-slate-200 bg-white/50'
+          }`}>
+            <div className="flex items-center space-x-3">
+              <span className="text-2xl">{kamarObjekAktif.icon}</span>
+              <div>
+                <h2 className="font-bold text-base flex items-center space-x-2">
+                  <span>#{kamarObjekAktif.name}</span>
+                </h2>
+                <p className="text-xs text-slate-400">{kamarObjekAktif.description}</p>
+              </div>
+            </div>
+
+            <div className="flex items-center space-x-2 text-xs text-slate-400">
+              <div className="flex -space-x-2 overflow-hidden">
+                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-slate-900 bg-indigo-500 flex items-center justify-center text-xs font-bold text-white">⚡</div>
+                <div className="inline-block h-6 w-6 rounded-full ring-2 ring-slate-900 bg-pink-500 flex items-center justify-center text-xs font-bold text-white">🤖</div>
+              </div>
+              <span>Aktif</span>
+            </div>
+          </div>
+
+          {/* Banner Pesan Disematkan (Pinned Messages) */}
+          {pesanDisematkan.length > 0 && (
+            <div className={`px-4 py-2 border-b flex items-center justify-between text-xs ${
+              tema === 'dark' ? 'bg-indigo-950/30 border-indigo-900/40 text-indigo-300' : 'bg-indigo-50 border-indigo-100 text-indigo-700'
+            }`}>
+              <div className="flex items-center space-x-2 truncate">
+                <Pin className="w-3.5 h-3.5 flex-shrink-0 text-amber-400" />
+                <span className="font-semibold">Pesan Disematkan:</span>
+                <span className="truncate italic">"{pesanDisematkan[0].content}"</span>
+              </div>
+              <span className="text-[10px] opacity-75">{pesanDisematkan.length} disematkan</span>
+            </div>
+          )}
+
+          {}
+          <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-4">
+            {pesanPilihanCari.length === 0 ? (
+              <div className="h-full flex flex-col items-center justify-center text-slate-400 text-center p-6">
+                <div className="w-16 h-16 rounded-2xl bg-slate-800/50 flex items-center justify-center text-3xl mb-3">
+                  💬
+                </div>
+                <p className="font-semibold text-lg text-slate-300">Belum ada pesan di #{kamarObjekAktif.name}</p>
+                <p className="text-sm max-w-sm mt-1">Jadilah yang pertama mengirim obrolan atau ketik @bot untuk bantuan!</p>
+              </div>
+            ) : (
+              pesanPilihanCari.map((msg) => {
+                const isSaya = msg.senderId === pengguna.id;
+
+                return (
+                  <div key={msg.id} className={`group flex items-start space-x-3 transition-all ${
+                    isSaya ? 'flex-row-reverse space-x-reverse' : ''
+                  }`}>
+                    {/* Avatar Pengirim */}
+                    <div className="flex-shrink-0">
+                      <div className="w-10 h-10 rounded-xl bg-slate-800 border border-slate-700/50 flex items-center justify-center text-xl shadow-md">
+                        {msg.senderAvatar}
+                      </div>
+                    </div>
+
+                    {/* Kontainer Gelembung Pesan */}
+                    <div className={`max-w-[80%] md:max-w-[65%] ${isSaya ? 'items-end' : 'items-start'} flex flex-col`}>
+                      
+                      {/* Nama Pengirim & Waktu */}
+                      <div className="flex items-center space-x-2 mb-1 px-1 text-xs">
+                        <span className="font-bold text-slate-300">{msg.senderName}</span>
+                        <span className="text-slate-500">{formatWaktuIndo(msg.timestamp)}</span>
+                        {msg.isPinned && <Pin className="w-3 h-3 text-amber-400 inline" title="Disematkan" />}
+                      </div>
+
+                      {/* Tampilan Balasan (Reply Context) */}
+                      {msg.replyTo && (
+                        <div className={`text-xs px-3 py-1.5 rounded-lg mb-1 border-l-2 border-indigo-500 bg-slate-800/40 text-slate-400 max-w-full truncate`}>
+                          <span className="font-semibold text-indigo-400">@{msg.replyTo.senderName}:</span> {msg.replyTo.content}
+                        </div>
+                      )}
+
+                      {/* Gelembung Pesan Utama */}
+                      <div className={`relative px-4 py-3 rounded-2xl text-sm shadow-md transition-all ${
+                        isSaya 
+                          ? 'bg-gradient-to-r from-indigo-600 to-indigo-700 text-white rounded-tr-xs' 
+                          : tema === 'dark' 
+                            ? 'bg-slate-800/90 border border-slate-700/60 text-slate-100 rounded-tl-xs' 
+                            : 'bg-white border border-slate-200 text-slate-800 rounded-tl-xs'
+                      }`}>
+                        
+                        {/* Format Kode / Teks Biasa */}
+                        {msg.isCode ? (
+                          <pre className="font-mono text-xs bg-slate-950/80 text-emerald-400 p-3 rounded-xl overflow-x-auto my-1 border border-slate-800">
+                            <code>{msg.content}</code>
+                          </pre>
+                        ) : (
+                          <p className="whitespace-pre-wrap leading-relaxed">{msg.content}</p>
+                        )}
+
+                        {/* Lampiran Gambar / File */}
+                        {msg.attachment && (
+                          <div className="mt-2 rounded-xl overflow-hidden border border-slate-700/40 max-w-xs">
+                            {msg.attachment.type === 'image' ? (
+                              <img src={msg.attachment.url} alt="Lampiran obrolan" className="w-full h-auto max-h-48 object-cover" />
+                            ) : (
+                              <div className="p-3 bg-slate-900/60 flex items-center space-x-2 text-xs">
+                                <Paperclip className="w-4 h-4 text-indigo-400" />
+                                <span className="truncate">{msg.attachment.name}</span>
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {/* Menu Melayang Aksi Cepat Pesan */}
+                        <div className={`absolute top-2 ${isSaya ? '-left-24' : '-right-24'} opacity-0 group-hover:opacity-100 transition-opacity flex items-center space-x-1 bg-slate-900 border border-slate-700 rounded-lg p-1 shadow-xl z-10`}>
+                          <button 
+                            onClick={() => setBalasPesan(msg)}
+                            className="p-1 hover:bg-slate-800 text-slate-400 hover:text-indigo-400 rounded" 
+                            title="Balas"
+                          >
+                            <Reply className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => sematkanPesan(msg.id)}
+                            className="p-1 hover:bg-slate-800 text-slate-400 hover:text-amber-400 rounded" 
+                            title="Sematkan Pesan"
+                          >
+                            <Pin className="w-3.5 h-3.5" />
+                          </button>
+                          <button 
+                            onClick={() => tambahReaksi(msg.id, '❤️')}
+                            className="p-1 hover:bg-slate-800 text-slate-400 hover:text-rose-400 rounded" 
+                            title="Suka"
+                          >
+                            ❤️
+                          </button>
+                          {isSaya && (
+                            <button 
+                              onClick={() => hapusPesan(msg.id)}
+                              className="p-1 hover:bg-slate-800 text-slate-400 hover:text-rose-500 rounded" 
+                              title="Hapus"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Reaksi Emoji */}
+                      {msg.reactions && Object.keys(msg.reactions).length > 0 && (
+                        <div className="flex flex-wrap gap-1 mt-1.5">
+                          {Object.entries(msg.reactions).map(([emoji, count]) => (
+                            <button 
+                              key={emoji}
+                              onClick={() => tambahReaksi(msg.id, emoji)}
+                              className={`text-xs px-2 py-0.5 rounded-full flex items-center space-x-1 border transition-all ${
+                                tema === 'dark' 
+                                  ? 'bg-slate-800/80 border-slate-700 text-slate-300 hover:bg-slate-700' 
+                                  : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            >
+                              <span>{emoji}</span>
+                              <span className="font-bold">{count}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                    </div>
+                  </div>
+                );
+              })
+            )}
+
+            {/* Indikator Bot Mengetik */}
+            {sedangMengetik && (
+              <div className="flex items-center space-x-3 text-slate-400 text-xs">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center text-base">
+                  🤖
+                </div>
+                <div className="flex items-center space-x-1 bg-slate-800/60 px-3 py-2 rounded-xl">
+                  <span>Coment Bot sedang mengetik</span>
+                  <span className="animate-bounce">.</span>
+                  <span className="animate-bounce delay-100">.</span>
+                  <span className="animate-bounce delay-200">.</span>
+                </div>
+              </div>
+            )}
+
+            <div ref={refPesanAkhir} />
+          </div>
+
+          {}
+          <div className={`p-4 border-t relative ${
+            tema === 'dark' ? 'bg-slate-900/90 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            
+            {/* Pratinjau Balasan Pesan */}
+            {balasPesan && (
+              <div className="flex items-center justify-between bg-slate-800/60 border border-slate-700/50 p-2.5 rounded-xl mb-3 text-xs">
+                <div className="flex items-center space-x-2 truncate">
+                  <Reply className="w-4 h-4 text-indigo-400" />
+                  <span className="text-slate-400">Membalas <strong className="text-slate-200">@{balasPesan.senderName}</strong>:</span>
+                  <span className="truncate italic text-slate-300">"{balasPesan.content}"</span>
+                </div>
+                <button onClick={() => setBalasPesan(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Pratinjau Lampiran Berkas */}
+            {lampiranDipilih && (
+              <div className="flex items-center justify-between bg-indigo-950/40 border border-indigo-500/30 p-2 rounded-xl mb-3 text-xs">
+                <div className="flex items-center space-x-2">
+                  <Image className="w-4 h-4 text-indigo-400" />
+                  <span className="truncate text-slate-200 font-medium">{lampiranDipilih.name}</span>
+                </div>
+                <button onClick={() => setLampiranDipilih(null)} className="text-slate-400 hover:text-white">
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            {/* Picker Emoji Pop-up */}
+            {tampilPickerEmoji && (
+              <div className={`absolute bottom-20 left-4 p-3 rounded-2xl border shadow-2xl z-30 flex flex-wrap gap-2 max-w-xs ${
+                tema === 'dark' ? 'bg-slate-900 border-slate-700' : 'bg-white border-slate-200'
+              }`}>
+                {DAFTAR_EMOJI.map(emoji => (
+                  <button 
+                    key={emoji}
+                    onClick={() => {
+                      setInputPesan(prev => prev + emoji);
+                      setTampilPickerEmoji(false);
+                    }}
+                    className="text-2xl hover:scale-125 transition-transform p-1.5"
+                  >
+                    {emoji}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Form Input Obrolan */}
+            <form onSubmit={tanganiKirimPesan} className="flex items-center space-x-2">
+              <div className={`flex-1 flex items-center px-4 py-2.5 rounded-2xl border transition-all ${
+                tema === 'dark' 
+                  ? 'bg-slate-950/70 border-slate-700/80 focus-within:border-indigo-500' 
+                  : 'bg-slate-100 border-slate-300 focus-within:border-indigo-500'
+              }`}>
+                
+                {/* Upload Gambar */}
+                <input 
+                  type="file" 
+                  ref={refInputFile} 
+                  onChange={unggahBerkas} 
+                  className="hidden" 
+                  accept="image/*"
+                />
+                <button 
+                  type="button"
+                  onClick={() => refInputFile.current?.click()}
+                  className="text-slate-400 hover:text-indigo-400 p-1 mr-1 transition-colors"
+                  title="Lampirkan Gambar/Berkas"
+                >
+                  <Paperclip className="w-5 h-5" />
+                </button>
+
+                {/* Sakelar Format Kode */}
+                <button 
+                  type="button"
+                  onClick={() => setIsKodeSnippet(!isKodeSnippet)}
+                  className={`p-1 mr-2 transition-colors rounded ${
+                    isKodeSnippet ? 'text-indigo-400 bg-indigo-500/20' : 'text-slate-400 hover:text-indigo-400'
+                  }`}
+                  title="Format Kode"
+                >
+                  <Code className="w-5 h-5" />
+                </button>
+
+                {/* Input Teks Utama */}
+                <input 
+                  type="text"
+                  placeholder={isKodeSnippet ? 'Ketik atau tempel potongan kode...' : `Ketik pesan di #${kamarObjekAktif.name}...`}
+                  value={inputPesan}
+                  onChange={(e) => setInputPesan(e.target.value)}
+                  className="w-full bg-transparent border-none outline-none text-sm placeholder-slate-500"
+                />
+
+                {/* Tombol Emoji */}
+                <button 
+                  type="button"
+                  onClick={() => setTampilPickerEmoji(!tampilPickerEmoji)}
+                  className="text-slate-400 hover:text-amber-400 p-1 ml-1 transition-colors"
+                  title="Pilih Emoji"
+                >
+                  <Smile className="w-5 h-5" />
+                </button>
+              </div>
+
+              {/* Tombol Kirim */}
+              <button 
+                type="submit"
+                disabled={!inputPesan.trim() && !lampiranDipilih}
+                className={`p-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold shadow-lg transition-all ${
+                  (!inputPesan.trim() && !lampiranDipilih) 
+                    ? 'opacity-50 cursor-not-allowed' 
+                    : 'hover:opacity-90 hover:scale-105 active:scale-95 shadow-indigo-600/30'
+                }`}
+              >
+                <Send className="w-5 h-5" />
+              </button>
+            </form>
+          </div>
+
+        </main>
+      </div>
+
+      {}
+      {tampilModalProfil && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className={`w-full max-w-md rounded-3xl p-6 border shadow-2xl ${
+            tema === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-black bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">
+                Pengaturan Profil Pengguna
+              </h3>
+              <button onClick={() => setTampilModalProfil(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-5">
+              {/* Pilih Avatar Emoji */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                  Pilih Avatar Emoji
+                </label>
+                <div className="grid grid-cols-6 gap-2">
+                  {AVATAR_PRESET.map(emojiAvatar => (
+                    <button
+                      key={emojiAvatar}
+                      onClick={() => setPengguna(prev => ({ ...prev, avatar: emojiAvatar }))}
+                      className={`text-2xl p-2.5 rounded-xl border transition-all flex items-center justify-center ${
+                        pengguna.avatar === emojiAvatar 
+                          ? 'border-indigo-500 bg-indigo-500/20 shadow-md scale-105' 
+                          : 'border-slate-800 hover:bg-slate-800/50'
+                      }`}
+                    >
+                      {emojiAvatar}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Nama Pengguna */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Nama Pengguna
+                </label>
+                <input 
+                  type="text"
+                  value={pengguna.name}
+                  onChange={(e) => setPengguna(prev => ({ ...prev, name: e.target.value }))}
+                  className={`w-full px-4 py-2.5 rounded-xl border outline-none text-sm ${
+                    tema === 'dark' ? 'bg-slate-950 border-slate-800 focus:border-indigo-500' : 'bg-slate-100 border-slate-300'
+                  }`}
+                />
+              </div>
+
+              {/* Status Online */}
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-2">
+                  Status Kehadiran
+                </label>
+                <div className="grid grid-cols-3 gap-2">
+                  {[
+                    { id: 'online', label: 'Online', color: 'bg-emerald-500' },
+                    { id: 'away', label: 'Istirahat', color: 'bg-amber-500' },
+                    { id: 'dnd', label: 'Jangan Ganggu', color: 'bg-rose-500' }
+                  ].map(statusObj => (
+                    <button
+                      key={statusObj.id}
+                      onClick={() => setPengguna(prev => ({ ...prev, status: statusObj.id }))}
+                      className={`flex items-center space-x-2 px-3 py-2 rounded-xl border text-xs font-semibold transition-all ${
+                        pengguna.status === statusObj.id 
+                          ? 'border-indigo-500 bg-indigo-500/20 text-indigo-300' 
+                          : 'border-slate-800 text-slate-400 hover:bg-slate-800/40'
+                      }`}
+                    >
+                      <span className={`w-2.5 h-2.5 rounded-full ${statusObj.color}`} />
+                      <span>{statusObj.label}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <button 
+              onClick={() => setTampilModalProfil(false)}
+              className="w-full mt-6 py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-bold shadow-lg hover:opacity-90 transition-all"
+            >
+              Simpan Profil
+            </button>
+          </div>
+        </div>
+      )}
+
+      {}
+      {tampilModalKamar && (
+        <div className="fixed inset-0 bg-slate-950/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className={`w-full max-w-md rounded-3xl p-6 border shadow-2xl ${
+            tema === 'dark' ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200'
+          }`}>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-black bg-gradient-to-r from-indigo-400 to-pink-400 bg-clip-text text-transparent">
+                Buat Kamar Obrolan Baru
+              </h3>
+              <button onClick={() => setTampilModalKamar(false)} className="text-slate-400 hover:text-white">
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={buatKamarBaru} className="space-y-4">
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Ikon Kamar
+                </label>
+                <div className="flex space-x-2">
+                  {['💬', '🚀', '🎯', '🔥', '🎉', '⚡', '🤖'].map(emoji => (
+                    <button
+                      key={emoji}
+                      type="button"
+                      onClick={() => setIkonKamarBaru(emoji)}
+                      className={`text-xl p-2 rounded-xl border ${
+                        ikonKamarBaru === emoji ? 'border-indigo-500 bg-indigo-500/20' : 'border-slate-800'
+                      }`}
+                    >
+                      {emoji}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Nama Kamar
+                </label>
+                <input 
+                  type="text"
+                  placeholder="contoh: ruang-diskusi"
+                  value={namaKamarBaru}
+                  onChange={(e) => setNamaKamarBaru(e.target.value)}
+                  className={`w-full px-4 py-2.5 rounded-xl border outline-none text-sm ${
+                    tema === 'dark' ? 'bg-slate-950 border-slate-800 focus:border-indigo-500' : 'bg-slate-100 border-slate-300'
+                  }`}
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+                  Deskripsi Kamar
+                </label>
+                <input 
+                  type="text"
+                  placeholder="Apa topik pembahasan kamar ini?"
+                  value={deskripsiKamarBaru}
+                  onChange={(e) => setDeskripsiKamarBaru(e.target.value)}
+                  className={`w-full px-4 py-2.5 rounded-xl border outline-none text-sm ${
+                    tema === 'dark' ? 'bg-slate-950 border-slate-800 focus:border-indigo-500' : 'bg-slate-100 border-slate-300'
+                  }`}
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button 
+                  type="button"
+                  onClick={() => setTampilModalKamar(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-700 font-semibold text-slate-400 hover:text-slate-200"
+                >
+                  Batal
+                </button>
+                <button 
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold shadow-lg"
+                >
+                  Buat Kamar
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+    </div>
+  );
+}
